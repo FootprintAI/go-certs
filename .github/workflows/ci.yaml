@@ -55,3 +55,7 @@ jobs:
     # Step 5: Run tests
     - name: Run tests
       run: go test ./... -v
+
+    # Step 6: make build
+    - name: Make
+      run: make build
