@@ -24,6 +24,7 @@ import (
 	"time"
 
 	certsgen "github.com/footprintai/go-certs/pkg/certs/gen"
+	version "github.com/footprintai/go-certs/pkg/version"
 )
 
 var (
@@ -44,6 +45,8 @@ func init() {
 
 func main() {
 	flag.Parse()
+
+	version.Print()
 
 	notBefore := time.Now()
 	notAfter := notBefore.Add(certValidDuration)
