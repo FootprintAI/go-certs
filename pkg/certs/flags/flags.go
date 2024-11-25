@@ -15,7 +15,6 @@
 package certsflags
 
 import (
-	"flag"
 	"fmt"
 	"os"
 
@@ -24,20 +23,12 @@ import (
 )
 
 var (
-	caCertPath    string
-	severKeyPath  string
-	serverCrtPath string
-	clientKeyPath string
-	clientCrtPath string
+	CaCertPath    string
+	SeverKeyPath  string
+	ServerCrtPath string
+	ClientKeyPath string
+	ClientCrtPath string
 )
-
-func init() {
-	flag.StringVar(&caCertPath, "tls_root_crt", "", "credentials: ca crt file path")
-	flag.StringVar(&severKeyPath, "tls_server_key", "", "credentials: server key file path")
-	flag.StringVar(&serverCrtPath, "tls_server_crt", "", "credentials: server crt file path")
-	flag.StringVar(&clientKeyPath, "tls_client_key", "", "credentials: client key file path")
-	flag.StringVar(&clientCrtPath, "tls_client_crt", "", "credentials: client crt file path")
-}
 
 func NewFlagLoader() FlagLoader {
 	return FlagLoader{}
@@ -50,23 +41,23 @@ var (
 )
 
 func (f FlagLoader) CaCert() []byte {
-	return mustLoad(caCertPath)
+	return mustLoad(CaCertPath)
 }
 
 func (f FlagLoader) ServerKey() []byte {
-	return mustLoad(severKeyPath)
+	return mustLoad(SeverKeyPath)
 }
 
 func (f FlagLoader) ServerCrt() []byte {
-	return mustLoad(serverCrtPath)
+	return mustLoad(ServerCrtPath)
 }
 
 func (f FlagLoader) ClientKey() []byte {
-	return mustLoad(clientKeyPath)
+	return mustLoad(ClientKeyPath)
 }
 
 func (f FlagLoader) ClientCrt() []byte {
-	return mustLoad(clientCrtPath)
+	return mustLoad(ClientCrtPath)
 }
 
 func mustLoad(filepath string) []byte {
