@@ -15,8 +15,32 @@
 package certsmem
 
 import (
+	"os"
+
 	certs "github.com/footprintai/go-certs/pkg/certs"
 )
+
+func NewFileLoader(ca, clientKey, clientCert, serverKey, serverCert string) MemLoader {
+	return MemLoader{
+		ca:         readAllIfNotEmpty(ca),
+		clientKey:  readAllIfNotEmpty(clientKey),
+		clientCert: readAllIfNotEmpty(clientCert),
+		serverKey:  readAllIfNotEmpty(serverKey),
+		serverCert: readAllIfNotEmpty(serverCert),
+	}
+}
+
+func readAllIfNotEmpty(file string) []byte {
+	if file == "" {
+		return []byte{}
+	}
+	blob, err := os.ReadFile(file)
+	if err != nil {
+		panic(err)
+	}
+	return blob
+
+}
 
 func NewMemLoader(ca, clientKey, clientCert, serverKey, serverCert []byte) MemLoader {
 	return MemLoader{
