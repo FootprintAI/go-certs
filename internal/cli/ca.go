@@ -12,23 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package cli
 
-import (
-	"fmt"
-	"os"
-
-	"github.com/footprintai/go-certs/internal/cli"
-	"github.com/footprintai/go-certs/pkg/version"
+var (
+	caCertPath string
+	caKeyPath  string
 )
-
-func main() {
-	// Print version information
-	version.Print()
-
-	// Execute the CLI
-	if err := cli.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-}

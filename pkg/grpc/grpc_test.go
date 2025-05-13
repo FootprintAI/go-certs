@@ -39,7 +39,27 @@ func (m *mockServer) SayHello(ctx context.Context, req *examplepb.SayHelloReques
 }
 
 func TestMemLoaderWithTLS(t *testing.T) {
-	ca, clientCrt, clientKey, serverCrt, serverKey := certsgen.NewTLSCredentials(
+	credentials, err := certsgen.NewTLSCredentials(
+		time.Now(),
+		time.Now().AddDate(0, 0, 1), /*one day after*/
+		certsgen.WithOrganizations("unittest"),
+		certsgen.WithAliasDNSNames("localhost"),
+		certsgen.WithAliasIPs("127.0.0.1"),
+	)
+	if err != nil {
+		t.Fatalf("Failed to generate TLS credentials: %v", err)
+	}
+
+	// Use the new constructor that takes a TLSCredentials struct
+	l := certsmem.NewMemLoaderFromCredentials(credentials)
+
+	grpcCerts := NewGrpcCerts(l)
+	testGrpc(t, grpcCerts)
+}
+
+// Add a new test for backward compatibility
+func TestLegacyWithTLS(t *testing.T) {
+	ca, clientCrt, clientKey, serverCrt, serverKey := certsgen.LegacyNewTLSCredentials(
 		time.Now(),
 		time.Now().AddDate(0, 0, 1), /*one day after*/
 		certsgen.WithOrganizations("unittest"),
