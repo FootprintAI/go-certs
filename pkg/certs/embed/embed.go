@@ -18,7 +18,7 @@ import (
 	"embed"
 	"fmt"
 
-	certs "github.com/footprintai/go-certs/pkg/certs"
+	"github.com/footprintai/go-certs/pkg/certs"
 )
 
 func NewEmbedLoader(fs embed.FS) EmbedLoader {
@@ -30,9 +30,11 @@ type EmbedLoader struct {
 }
 
 var (
-	_ certs.Certificates = EmbedLoader{}
+	_ certs.Certificates      = EmbedLoader{}
+	_ certs.TypedCertificates = EmbedLoader{}
 )
 
+// Implementations for certs.Certificates interface
 func (e EmbedLoader) CaCert() []byte {
 	return e.mustLoad("ca.crt")
 }
@@ -51,6 +53,47 @@ func (e EmbedLoader) ClientKey() []byte {
 
 func (e EmbedLoader) ClientCrt() []byte {
 	return e.mustLoad("client.crt")
+}
+
+// Implementation for TypedCertificates interface
+func (e EmbedLoader) GetCACert() certs.CACert {
+	return certs.CACert(e.mustLoad("ca.crt"))
+}
+
+func (e EmbedLoader) GetCAKey() certs.CAKey {
+	// CA key might not be available in embedded certs for security reasons
+	data, err := e.fs.ReadFile("ca.key")
+	if err != nil {
+		return nil
+	}
+	return certs.CAKey(data)
+}
+
+func (e EmbedLoader) GetServerCert() certs.ServerCert {
+	return certs.ServerCert(e.mustLoad("server.crt"))
+}
+
+func (e EmbedLoader) GetServerKey() certs.ServerKey {
+	return certs.ServerKey(e.mustLoad("server.key"))
+}
+
+func (e EmbedLoader) GetClientCert() certs.ClientCert {
+	return certs.ClientCert(e.mustLoad("client.crt"))
+}
+
+func (e EmbedLoader) GetClientKey() certs.ClientKey {
+	return certs.ClientKey(e.mustLoad("client.key"))
+}
+
+func (e EmbedLoader) GetCredentials() *certs.TLSCredentials {
+	return &certs.TLSCredentials{
+		CACert:     e.GetCACert(),
+		CAKey:      e.GetCAKey(),
+		ClientCert: e.GetClientCert(),
+		ClientKey:  e.GetClientKey(),
+		ServerCert: e.GetServerCert(),
+		ServerKey:  e.GetServerKey(),
+	}
 }
 
 func (e EmbedLoader) mustLoad(filepath string) []byte {

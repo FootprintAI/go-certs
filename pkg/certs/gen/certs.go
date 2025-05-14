@@ -21,19 +21,22 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"log"
 	"math/big"
 	"net"
 	"time"
+
+	"github.com/footprintai/go-certs/pkg/certs"
 )
 
+// Keep all the original template option code
 type templateOption interface {
 	apply(o *Option)
 }
 
 type Option struct {
 	organizations []string
-
 	aliasDNSNames []string
 	aliasIPs      []net.IP
 }
@@ -92,7 +95,6 @@ func WithAliasIPs(aliasIPs ...string) aliasIPsOption {
 
 // CertTemplate is a helper function to create a cert template with a serial number and other required fields
 func CertTemplate(notBefore, notAfter time.Time, opts ...templateOption) (*x509.Certificate, error) {
-
 	o := &Option{}
 	for _, opt := range opts {
 		opt.apply(o)
@@ -138,17 +140,17 @@ func CreateCert(template, parent *x509.Certificate, pub interface{}, parentPriv 
 }
 
 // NewTLSCredentials creates signed certificates for both the client and server
-// output in order: ca, client.cert, client.key, server.cert, server.key
-func NewTLSCredentials(notBefore, notAfter time.Time, opts ...templateOption) ([]byte, []byte, []byte, []byte, []byte) {
+// Returns CA cert, CA key, client cert, client key, server cert, server key in a TLSCredentials struct
+func NewTLSCredentials(notBefore, notAfter time.Time, opts ...templateOption) (*certs.TLSCredentials, error) {
 	// generate a new key-pair
 	rootKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
-		log.Fatalf("generating random key: %v", err)
+		return nil, fmt.Errorf("generating random key: %w", err)
 	}
 
 	rootCertTmpl, err := CertTemplate(notBefore, notAfter, opts...)
 	if err != nil {
-		log.Fatalf("creating cert template: %v", err)
+		return nil, fmt.Errorf("creating cert template: %w", err)
 	}
 
 	// this cert will be the CA that we will use to sign the server cert
@@ -159,23 +161,28 @@ func NewTLSCredentials(notBefore, notAfter time.Time, opts ...templateOption) ([
 
 	rootCert, rootCertPEM, err := CreateCert(rootCertTmpl, rootCertTmpl, &rootKey.PublicKey, rootKey)
 	if err != nil {
-		log.Fatalf("error creating cert: %v", err)
+		return nil, fmt.Errorf("error creating cert: %w", err)
 	}
 
+	// encode the CA private key
+	rootKeyPEM := pem.EncodeToMemory(&pem.Block{
+		Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(rootKey),
+	})
+
 	/*******************************************************************
-	Server Cert
-	*******************************************************************/
+	  Server Cert
+	  *******************************************************************/
 
 	// create a key-pair for the server
 	servKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
-		log.Fatalf("generating random key: %v", err)
+		return nil, fmt.Errorf("generating random key: %w", err)
 	}
 
 	// create a template for the server
 	servCertTmpl, err := CertTemplate(notBefore, notAfter, opts...)
 	if err != nil {
-		log.Fatalf("creating cert template: %v", err)
+		return nil, fmt.Errorf("creating cert template: %w", err)
 	}
 	servCertTmpl.KeyUsage = x509.KeyUsageDigitalSignature
 	servCertTmpl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
@@ -183,27 +190,28 @@ func NewTLSCredentials(notBefore, notAfter time.Time, opts ...templateOption) ([
 	// create a certificate which wraps the server's public key, sign it with the root private key
 	_, servCertPEM, err := CreateCert(servCertTmpl, rootCert, &servKey.PublicKey, rootKey)
 	if err != nil {
-		log.Fatalf("error creating cert: %v", err)
+		return nil, fmt.Errorf("error creating cert: %w", err)
 	}
 
 	// provide the private key and the cert
 	servKeyPEM := pem.EncodeToMemory(&pem.Block{
 		Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(servKey),
 	})
+
 	/*******************************************************************
-	Client Cert
-	*******************************************************************/
+	  Client Cert
+	  *******************************************************************/
 
 	// create a key-pair for the client
 	clientKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
-		log.Fatalf("generating random key: %v", err)
+		return nil, fmt.Errorf("generating random key: %w", err)
 	}
 
 	// create a template for the client
 	clientCertTmpl, err := CertTemplate(notBefore, notAfter, opts...)
 	if err != nil {
-		log.Fatalf("creating cert template: %v", err)
+		return nil, fmt.Errorf("creating cert template: %w", err)
 	}
 	clientCertTmpl.KeyUsage = x509.KeyUsageDigitalSignature
 	clientCertTmpl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}
@@ -211,13 +219,35 @@ func NewTLSCredentials(notBefore, notAfter time.Time, opts ...templateOption) ([
 	// the root cert signs the cert by again providing its private key
 	_, clientCertPEM, err := CreateCert(clientCertTmpl, rootCert, &clientKey.PublicKey, rootKey)
 	if err != nil {
-		log.Fatalf("error creating cert: %v", err)
+		return nil, fmt.Errorf("error creating cert: %w", err)
 	}
 
 	// encode and load the cert and private key for the client
 	clientKeyPEM := pem.EncodeToMemory(&pem.Block{
 		Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(clientKey),
 	})
-	// rootCert is the client CA as well as server CA, servTLSCert is for the server
-	return rootCertPEM, clientCertPEM, clientKeyPEM, servCertPEM, servKeyPEM
+
+	// Return all PEM data in a strongly typed struct
+	return &certs.TLSCredentials{
+		CACert:     certs.CACert(rootCertPEM),
+		CAKey:      certs.CAKey(rootKeyPEM),
+		ClientCert: certs.ClientCert(clientCertPEM),
+		ClientKey:  certs.ClientKey(clientKeyPEM),
+		ServerCert: certs.ServerCert(servCertPEM),
+		ServerKey:  certs.ServerKey(servKeyPEM),
+	}, nil
+}
+
+// For backward compatibility with existing code
+func LegacyNewTLSCredentials(notBefore, notAfter time.Time, opts ...templateOption) ([]byte, []byte, []byte, []byte, []byte) {
+	credentials, err := NewTLSCredentials(notBefore, notAfter, opts...)
+	if err != nil {
+		log.Fatalf("error creating certificates: %v", err)
+	}
+
+	return credentials.CACert.Bytes(),
+		credentials.ClientCert.Bytes(),
+		credentials.ClientKey.Bytes(),
+		credentials.ServerCert.Bytes(),
+		credentials.ServerKey.Bytes()
 }

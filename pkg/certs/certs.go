@@ -14,10 +14,71 @@
 
 package certs
 
+// Certificate types for better type safety
+type CACert []byte
+type CAKey []byte
+type ClientCert []byte
+type ClientKey []byte
+type ServerCert []byte
+type ServerKey []byte
+
+// Helper methods for the certificate types
+func (c CACert) Bytes() []byte {
+	return []byte(c)
+}
+
+func (k CAKey) Bytes() []byte {
+	return []byte(k)
+}
+
+func (c ClientCert) Bytes() []byte {
+	return []byte(c)
+}
+
+func (k ClientKey) Bytes() []byte {
+	return []byte(k)
+}
+
+func (c ServerCert) Bytes() []byte {
+	return []byte(c)
+}
+
+func (k ServerKey) Bytes() []byte {
+	return []byte(k)
+}
+
+// TLSCredentials holds all the generated certificates and keys
+type TLSCredentials struct {
+	CACert     CACert
+	CAKey      CAKey
+	ClientCert ClientCert
+	ClientKey  ClientKey
+	ServerCert ServerCert
+	ServerKey  ServerKey
+}
+
+// Certificates is the original interface for accessing certificates
 type Certificates interface {
 	CaCert() []byte
 	ServerKey() []byte
 	ServerCrt() []byte
 	ClientKey() []byte
 	ClientCrt() []byte
+}
+
+// CertificatesWithCAKey extends the Certificates interface to include access to the CA key
+type CertificatesWithCAKey interface {
+	Certificates
+	CAKey() []byte
+}
+
+// TypedCertificates provides access to strongly-typed certificates and keys
+type TypedCertificates interface {
+	GetCACert() CACert
+	GetCAKey() CAKey
+	GetServerCert() ServerCert
+	GetServerKey() ServerKey
+	GetClientCert() ClientCert
+	GetClientKey() ClientKey
+	GetCredentials() *TLSCredentials
 }
