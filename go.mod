@@ -6,7 +6,7 @@ require (
 	github.com/golang/glog v1.2.5
 	github.com/hashicorp/go-version v1.7.0
 	github.com/spf13/cobra v1.9.1
-	google.golang.org/grpc v1.72.0
+	google.golang.org/grpc v1.72.1
 	google.golang.org/protobuf v1.36.6
 )
 
