@@ -55,6 +55,10 @@ func (e EmbedLoader) ClientCrt() []byte {
 	return e.mustLoad("client.crt")
 }
 
+func (e EmbedLoader) IsTLSInsecure() bool {
+	return false
+}
+
 // Implementation for TypedCertificates interface
 func (e EmbedLoader) GetCACert() certs.CACert {
 	return certs.CACert(e.mustLoad("ca.crt"))

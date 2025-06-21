@@ -20,13 +20,21 @@ import (
 	"github.com/footprintai/go-certs/pkg/certs"
 )
 
-func NewFileLoader(ca, clientKey, clientCert, serverKey, serverCert string) MemLoader {
+func NewFileLoader(ca, clientKey, clientCert, serverKey, serverCert string, insecure bool) MemLoader {
 	return MemLoader{
 		ca:         certs.CACert(readAllIfNotEmpty(ca)),
 		clientKey:  certs.ClientKey(readAllIfNotEmpty(clientKey)),
 		clientCert: certs.ClientCert(readAllIfNotEmpty(clientCert)),
 		serverKey:  certs.ServerKey(readAllIfNotEmpty(serverKey)),
 		serverCert: certs.ServerCert(readAllIfNotEmpty(serverCert)),
+		insecure:   insecure,
+	}
+}
+
+// NewInsecureFileLoader creates a memory-based certificate loader in insecure mode that ignores file paths
+func NewInsecureFileLoader() MemLoader {
+	return MemLoader{
+		insecure: true,
 	}
 }
 
@@ -49,6 +57,7 @@ func NewMemLoader(ca, clientKey, clientCert, serverKey, serverCert []byte) MemLo
 		clientCert: certs.ClientCert(clientCert),
 		serverKey:  certs.ServerKey(serverKey),
 		serverCert: certs.ServerCert(serverCert),
+		insecure:   false,
 	}
 }
 
@@ -61,6 +70,7 @@ func NewMemLoaderWithCAKey(ca, caKey, clientKey, clientCert, serverKey, serverCe
 			clientCert: certs.ClientCert(clientCert),
 			serverKey:  certs.ServerKey(serverKey),
 			serverCert: certs.ServerCert(serverCert),
+			insecure:   false,
 		},
 		caKey: certs.CAKey(caKey),
 	}
@@ -75,8 +85,25 @@ func NewMemLoaderFromCredentials(credentials *certs.TLSCredentials) MemLoaderWit
 			clientCert: credentials.ClientCert,
 			serverKey:  credentials.ServerKey,
 			serverCert: credentials.ServerCert,
+			insecure:   false,
 		},
 		caKey: credentials.CAKey,
+	}
+}
+
+// NewInsecureMemLoader creates a memory-based certificate loader in insecure mode
+func NewInsecureMemLoader() MemLoader {
+	return MemLoader{
+		insecure: true,
+	}
+}
+
+// NewInsecureMemLoaderWithCAKey creates a memory-based certificate loader with CA key in insecure mode
+func NewInsecureMemLoaderWithCAKey() MemLoaderWithCAKey {
+	return MemLoaderWithCAKey{
+		MemLoader: MemLoader{
+			insecure: true,
+		},
 	}
 }
 
@@ -86,6 +113,7 @@ type MemLoader struct {
 	clientCert certs.ClientCert
 	serverKey  certs.ServerKey
 	serverCert certs.ServerCert
+	insecure   bool
 }
 
 type MemLoaderWithCAKey struct {
@@ -101,23 +129,42 @@ var (
 
 // Implementations for certs.Certificates interface
 func (e MemLoader) CaCert() []byte {
+	if e.insecure {
+		return []byte("")
+	}
 	return e.ca.Bytes()
 }
 
 func (e MemLoader) ServerKey() []byte {
+	if e.insecure {
+		return []byte("")
+	}
 	return e.serverKey.Bytes()
 }
 
 func (e MemLoader) ServerCrt() []byte {
+	if e.insecure {
+		return []byte("")
+	}
 	return e.serverCert.Bytes()
 }
 
 func (e MemLoader) ClientKey() []byte {
+	if e.insecure {
+		return []byte("")
+	}
 	return e.clientKey.Bytes()
 }
 
 func (e MemLoader) ClientCrt() []byte {
+	if e.insecure {
+		return []byte("")
+	}
 	return e.clientCert.Bytes()
+}
+
+func (e MemLoader) IsTLSInsecure() bool {
+	return e.insecure
 }
 
 // Implementation for CertificatesWithCAKey interface
