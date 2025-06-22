@@ -28,6 +28,7 @@ var (
 	ServerCrtPath string
 	ClientKeyPath string
 	ClientCrtPath string
+	TLSInsecure   bool
 )
 
 func NewFlagLoader() FlagLoader {
@@ -41,23 +42,42 @@ var (
 )
 
 func (f FlagLoader) CaCert() []byte {
+	if TLSInsecure {
+		return []byte("")
+	}
 	return mustLoad(CaCertPath)
 }
 
 func (f FlagLoader) ServerKey() []byte {
+	if TLSInsecure {
+		return []byte("")
+	}
 	return mustLoad(SeverKeyPath)
 }
 
 func (f FlagLoader) ServerCrt() []byte {
+	if TLSInsecure {
+		return []byte("")
+	}
 	return mustLoad(ServerCrtPath)
 }
 
 func (f FlagLoader) ClientKey() []byte {
+	if TLSInsecure {
+		return []byte("")
+	}
 	return mustLoad(ClientKeyPath)
 }
 
 func (f FlagLoader) ClientCrt() []byte {
+	if TLSInsecure {
+		return []byte("")
+	}
 	return mustLoad(ClientCrtPath)
+}
+
+func (f FlagLoader) IsTLSInsecure() bool {
+	return TLSInsecure
 }
 
 func mustLoad(filepath string) []byte {

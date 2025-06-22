@@ -64,6 +64,7 @@ type Certificates interface {
 	ServerCrt() []byte
 	ClientKey() []byte
 	ClientCrt() []byte
+	IsTLSInsecure() bool
 }
 
 // CertificatesWithCAKey extends the Certificates interface to include access to the CA key
