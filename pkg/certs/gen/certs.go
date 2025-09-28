@@ -22,7 +22,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"log"
 	"math/big"
 	"net"
 	"time"
@@ -246,7 +245,7 @@ func NewTLSCredentials(notBefore, notAfter time.Time, opts ...templateOption) (*
 func LegacyNewTLSCredentials(notBefore, notAfter time.Time, opts ...templateOption) ([]byte, []byte, []byte, []byte, []byte) {
 	credentials, err := NewTLSCredentials(notBefore, notAfter, opts...)
 	if err != nil {
-		log.Fatalf("error creating certificates: %v", err)
+		panic(fmt.Sprintf("error creating certificates: %v", err))
 	}
 
 	return credentials.CACert.Bytes(),

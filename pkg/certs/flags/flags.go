@@ -19,7 +19,6 @@ import (
 	"os"
 
 	"github.com/footprintai/go-certs/pkg/certs"
-	"github.com/golang/glog"
 )
 
 var (
@@ -81,7 +80,7 @@ func (f FlagLoader) IsTLSInsecure() bool {
 }
 
 func mustLoad(filepath string) []byte {
-	glog.Info("credentials: loading file :%s\n", filepath)
+	fmt.Printf("credentials: loading file: %s\n", filepath)
 	b, err := os.ReadFile(filepath)
 	if err != nil {
 		panic(fmt.Sprintf("credentials: missing file :%s\n", filepath))
