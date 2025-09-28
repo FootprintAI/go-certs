@@ -21,11 +21,58 @@ import (
 	"bytes"
 	"encoding/pem"
 	"fmt"
+	"net"
 
 	"github.com/footprintai/go-certs/pkg/certs"
+	"google.golang.org/grpc"
 	grpccredentials "google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
+
+// TypeHostAndPort represents a network address with host and port components.
+// It provides type-safe parsing and access to host/port components for gRPC connections.
+type TypeHostAndPort struct {
+	address string
+}
+
+// NewTypeHostAndPort creates a new TypeHostAndPort from an address string.
+// The address can be in format "host:port" or just "host".
+// Examples: "127.0.0.1:50090", "authz.kafeido-mlops.svc.cluster.local:50090", "localhost"
+func NewTypeHostAndPort(address string) *TypeHostAndPort {
+	return &TypeHostAndPort{address: address}
+}
+
+// Host extracts and returns the hostname portion of the address.
+// For "authz.kafeido-mlops.svc.cluster.local:50090" returns "authz.kafeido-mlops.svc.cluster.local"
+// For "localhost:8080" returns "localhost"
+// For "localhost" (no port) returns "localhost"
+func (t *TypeHostAndPort) Host() string {
+	if host, _, err := net.SplitHostPort(t.address); err == nil {
+		return host
+	}
+	// If no port, return the address as-is
+	return t.address
+}
+
+// Port extracts and returns the port portion of the address.
+// Returns empty string if no port is specified.
+func (t *TypeHostAndPort) Port() string {
+	if _, port, err := net.SplitHostPort(t.address); err == nil {
+		return port
+	}
+	return ""
+}
+
+// String returns the original address string.
+func (t *TypeHostAndPort) String() string {
+	return t.address
+}
+
+// HasPort returns true if the address includes a port component.
+func (t *TypeHostAndPort) HasPort() bool {
+	_, _, err := net.SplitHostPort(t.address)
+	return err == nil
+}
 
 func NewGrpcCerts(certs certs.Certificates) *GrpcCerts {
 	return &GrpcCerts{certs: certs}
@@ -64,14 +111,57 @@ func (g *GrpcCerts) newServerCredentials() (grpccredentials.TransportCredentials
 	return grpccredentials.NewTLS(tlsConfig), nil
 }
 
-func (g *GrpcCerts) NewClientTLSCredentials() (grpccredentials.TransportCredentials, error) {
-	return g.newClientCredentials()
+// NewClientTLSCredentials creates client TLS credentials with ServerName extracted from target.
+// The ServerName is automatically set to the hostname portion (without port) for certificate verification.
+func (g *GrpcCerts) NewClientTLSCredentials(target *TypeHostAndPort) (grpccredentials.TransportCredentials, error) {
+	return g.newClientCredentialsWithHostAndPort(target)
 }
 
-func (g *GrpcCerts) newClientCredentials() (grpccredentials.TransportCredentials, error) {
+
+// NewClientDialOptions creates both TLS credentials and gRPC dial options with proper 
+// authority handling. This is the recommended method for creating gRPC client connections.
+//
+// It automatically:
+// 1. Uses TypeHostAndPort to safely extract hostname from target
+// 2. Sets TLS ServerName to the hostname for certificate verification  
+// 3. Sets gRPC Authority to prevent ServerName from including the port
+// 4. Returns ready-to-use dial options
+//
+// Example usage:
+//   target := NewTypeHostAndPort("authz.kafeido-mlops.svc.cluster.local:50090")
+//   dialOpts, err := grpcCerts.NewClientDialOptions(target)
+//   if err != nil { return err }
+//   conn, err := grpc.NewClient(target.String(), dialOpts...)
+func (g *GrpcCerts) NewClientDialOptions(target *TypeHostAndPort) ([]grpc.DialOption, error) {
+	creds, err := g.NewClientTLSCredentials(target)
+	if err != nil {
+		return nil, err
+	}
+
+	dialOpts := []grpc.DialOption{
+		grpc.WithTransportCredentials(creds),
+	}
+
+	// Set authority to hostname (without port)
+	if host := target.Host(); host != "" {
+		dialOpts = append(dialOpts, grpc.WithAuthority(host))
+	}
+
+	return dialOpts, nil
+}
+
+
+func (g *GrpcCerts) newClientCredentialsWithHostAndPort(target *TypeHostAndPort) (grpccredentials.TransportCredentials, error) {
 	// Check if insecure mode is enabled
 	if g.certs.IsTLSInsecure() {
 		return insecure.NewCredentials(), nil
+	}
+
+	// Extract hostname from target for ServerName
+	serverName := target.Host()
+	if serverName == "" {
+		// Default fallback for backward compatibility
+		serverName = "localhost"
 	}
 
 	caCert := g.certs.CaCert()
@@ -89,7 +179,7 @@ func (g *GrpcCerts) newClientCredentials() (grpccredentials.TransportCredentials
 	clientTLSConfig := &tls.Config{
 		RootCAs:      cPool,
 		Certificates: []tls.Certificate{clientCert},
-		ServerName:   "127.0.0.1",
+		ServerName:   serverName,
 		VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
 			// Custom verification for self-signed certificates in development
 			if len(rawCerts) == 0 {
@@ -123,11 +213,15 @@ func (g *GrpcCerts) newClientCredentials() (grpccredentials.TransportCredentials
 				return errors.New("certificate not issued by expected CA")
 			}
 			
-			// Additional verification: check that server cert is valid for 127.0.0.1
-			if err := serverCert.VerifyHostname("127.0.0.1"); err != nil {
-				// Try localhost as fallback
-				if err := serverCert.VerifyHostname("localhost"); err != nil {
-					return fmt.Errorf("hostname verification failed for both 127.0.0.1 and localhost: %w", err)
+			// Additional verification: check that server cert is valid for the ServerName
+			if err := serverCert.VerifyHostname(serverName); err != nil {
+				// Try localhost as fallback if ServerName was 127.0.0.1
+				if serverName == "127.0.0.1" {
+					if err := serverCert.VerifyHostname("localhost"); err != nil {
+						return fmt.Errorf("hostname verification failed for both %s and localhost: %w", serverName, err)
+					}
+				} else {
+					return fmt.Errorf("hostname verification failed for %s: %w", serverName, err)
 				}
 			}
 			
