@@ -107,6 +107,10 @@ func CertTemplate(notBefore, notAfter time.Time, opts ...templateOption) (*x509.
 		return nil, errors.New("failed to generate serial number: " + err.Error())
 	}
 
+	// Ensure localhost and 127.0.0.1 are always included
+	dnsNames := append([]string{"localhost"}, o.aliasDNSNames...)
+	ipAddresses := append([]net.IP{net.ParseIP("127.0.0.1")}, o.aliasIPs...)
+	
 	tmpl := x509.Certificate{
 		SerialNumber:          serialNumber,
 		Subject:               pkix.Name{Organization: o.organizations},
@@ -114,8 +118,8 @@ func CertTemplate(notBefore, notAfter time.Time, opts ...templateOption) (*x509.
 		NotBefore:             notBefore,
 		NotAfter:              notAfter, // valid for a month
 		BasicConstraintsValid: true,
-		DNSNames:              o.aliasDNSNames,
-		IPAddresses:           o.aliasIPs,
+		DNSNames:              dnsNames,
+		IPAddresses:           ipAddresses,
 	}
 	return &tmpl, nil
 }

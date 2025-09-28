@@ -20,6 +20,7 @@ import (
 	"errors"
 	"bytes"
 	"encoding/pem"
+	"fmt"
 
 	"github.com/footprintai/go-certs/pkg/certs"
 	grpccredentials "google.golang.org/grpc/credentials"
@@ -34,12 +35,8 @@ type GrpcCerts struct {
 	certs certs.Certificates
 }
 
-func (g *GrpcCerts) NewServerTLSCredentials() grpccredentials.TransportCredentials {
-	creds, err := g.newServerCredentials()
-	if err != nil {
-		panic(err)
-	}
-	return creds
+func (g *GrpcCerts) NewServerTLSCredentials() (grpccredentials.TransportCredentials, error) {
+	return g.newServerCredentials()
 }
 
 func (g *GrpcCerts) newServerCredentials() (grpccredentials.TransportCredentials, error) {
@@ -67,12 +64,8 @@ func (g *GrpcCerts) newServerCredentials() (grpccredentials.TransportCredentials
 	return grpccredentials.NewTLS(tlsConfig), nil
 }
 
-func (g *GrpcCerts) NewClientTLSCredentials() grpccredentials.TransportCredentials {
-	creds, err := g.newClientCredentials()
-	if err != nil {
-		panic(err)
-	}
-	return creds
+func (g *GrpcCerts) NewClientTLSCredentials() (grpccredentials.TransportCredentials, error) {
+	return g.newClientCredentials()
 }
 
 func (g *GrpcCerts) newClientCredentials() (grpccredentials.TransportCredentials, error) {
@@ -96,7 +89,7 @@ func (g *GrpcCerts) newClientCredentials() (grpccredentials.TransportCredentials
 	clientTLSConfig := &tls.Config{
 		RootCAs:      cPool,
 		Certificates: []tls.Certificate{clientCert},
-		ServerName:   "localhost",
+		ServerName:   "127.0.0.1",
 		VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
 			// Custom verification for self-signed certificates in development
 			if len(rawCerts) == 0 {
@@ -130,9 +123,12 @@ func (g *GrpcCerts) newClientCredentials() (grpccredentials.TransportCredentials
 				return errors.New("certificate not issued by expected CA")
 			}
 			
-			// Additional verification: check that server cert is valid for localhost
-			if err := serverCert.VerifyHostname("localhost"); err != nil {
-				return err
+			// Additional verification: check that server cert is valid for 127.0.0.1
+			if err := serverCert.VerifyHostname("127.0.0.1"); err != nil {
+				// Try localhost as fallback
+				if err := serverCert.VerifyHostname("localhost"); err != nil {
+					return fmt.Errorf("hostname verification failed for both 127.0.0.1 and localhost: %w", err)
+				}
 			}
 			
 			return nil

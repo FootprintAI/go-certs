@@ -88,7 +88,11 @@ func testGrpc(t *testing.T, grpcCerts *GrpcCerts) {
 
 	done := make(chan struct{})
 	go func(done chan struct{}) {
-		serverCredentials := grpcCerts.NewServerTLSCredentials()
+		serverCredentials, err := grpcCerts.NewServerTLSCredentials()
+		if err != nil {
+			t.Errorf("Failed to create server credentials: %v", err)
+			return
+		}
 
 		server := grpc.NewServer(grpc.Creds(serverCredentials))
 
@@ -113,7 +117,10 @@ func testGrpc(t *testing.T, grpcCerts *GrpcCerts) {
 	// wait for ready
 	<-time.After(1 * time.Second)
 
-	clientCredentials := grpcCerts.NewClientTLSCredentials()
+	clientCredentials, err := grpcCerts.NewClientTLSCredentials()
+	if err != nil {
+		t.Fatalf("Failed to create client credentials: %v", err)
+	}
 
 	conn, err := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(clientCredentials))
 	if err != nil {
