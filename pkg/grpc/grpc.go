@@ -18,12 +18,12 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
-	"bytes"
-	"encoding/pem"
 	"fmt"
 	"net"
+	"os"
 
 	"github.com/footprintai/go-certs/pkg/certs"
+	certsmem "github.com/footprintai/go-certs/pkg/certs/mem"
 	"google.golang.org/grpc"
 	grpccredentials "google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -37,13 +37,13 @@ type TypeHostAndPort struct {
 
 // NewTypeHostAndPort creates a new TypeHostAndPort from an address string.
 // The address can be in format "host:port" or just "host".
-// Examples: "127.0.0.1:50090", "authz.kafeido-mlops.svc.cluster.local:50090", "localhost"
+// Examples: "127.0.0.1:50090", "service.example.svc.cluster.local:50090", "localhost"
 func NewTypeHostAndPort(address string) *TypeHostAndPort {
 	return &TypeHostAndPort{address: address}
 }
 
 // Host extracts and returns the hostname portion of the address.
-// For "authz.kafeido-mlops.svc.cluster.local:50090" returns "authz.kafeido-mlops.svc.cluster.local"
+// For "service.example.svc.cluster.local:50090" returns "service.example.svc.cluster.local"
 // For "localhost:8080" returns "localhost"
 // For "localhost" (no port) returns "localhost"
 func (t *TypeHostAndPort) Host() string {
@@ -78,6 +78,37 @@ func NewGrpcCerts(certs certs.Certificates) *GrpcCerts {
 	return &GrpcCerts{certs: certs}
 }
 
+// NewGrpcCertsFromFiles creates GrpcCerts by loading certificates from local files
+// This is useful when you have downloaded certificates from a remote server
+func NewGrpcCertsFromFiles(caCertPath, clientCertPath, clientKeyPath string) (*GrpcCerts, error) {
+	caCert, err := os.ReadFile(caCertPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read CA certificate: %w", err)
+	}
+
+	clientCert, err := os.ReadFile(clientCertPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read client certificate: %w", err)
+	}
+
+	clientKey, err := os.ReadFile(clientKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read client key: %w", err)
+	}
+
+	// Create mem loader with real certificates
+	// Note: We use dummy server cert/key since this is for client-only usage
+	l := certsmem.NewMemLoader(
+		caCert,     // Real CA cert
+		clientKey,  // Real client key
+		clientCert, // Real client cert
+		[]byte{},   // Empty server key (not needed for client)
+		[]byte{},   // Empty server cert (not needed for client)
+	)
+
+	return NewGrpcCerts(l), nil
+}
+
 type GrpcCerts struct {
 	certs certs.Certificates
 }
@@ -99,14 +130,19 @@ func (g *GrpcCerts) newServerCredentials() (grpccredentials.TransportCredentials
 	if err != nil {
 		return nil, errors.New("grpc/certificates: invalid server crt")
 	}
+	
+	// Create CA pool for client certificate verification (enable mTLS by default)
 	cPool := x509.NewCertPool()
 	if !cPool.AppendCertsFromPEM(caCert) {
 		return nil, errors.New("grpc/certificates: failed to parse client CA")
 	}
+	
 	tlsConfig := &tls.Config{
-		ClientAuth:   tls.RequireAndVerifyClientCert,
-		ClientCAs:    cPool,
+		ClientAuth:   tls.RequireAndVerifyClientCert, // Enable mutual TLS by default
+		ClientCAs:    cPool,                          // Verify client certs against CA
 		Certificates: []tls.Certificate{serverCert},
+		NextProtos:   []string{"h2"}, // Required for gRPC v1.67+ ALPN enforcement
+		MinVersion:   tls.VersionTLS12, // Ensure TLS 1.2+ for HTTP/2 compatibility
 	}
 	return grpccredentials.NewTLS(tlsConfig), nil
 }
@@ -128,7 +164,7 @@ func (g *GrpcCerts) NewClientTLSCredentials(target *TypeHostAndPort) (grpccreden
 // 4. Returns ready-to-use dial options
 //
 // Example usage:
-//   target := NewTypeHostAndPort("authz.kafeido-mlops.svc.cluster.local:50090")
+//   target := NewTypeHostAndPort("service.example.svc.cluster.local:50090")
 //   dialOpts, err := grpcCerts.NewClientDialOptions(target)
 //   if err != nil { return err }
 //   conn, err := grpc.NewClient(target.String(), dialOpts...)
@@ -157,17 +193,14 @@ func (g *GrpcCerts) newClientCredentialsWithHostAndPort(target *TypeHostAndPort)
 		return insecure.NewCredentials(), nil
 	}
 
-	// Extract hostname from target for ServerName
-	serverName := target.Host()
-	if serverName == "" {
-		// Default fallback for backward compatibility
-		serverName = "localhost"
-	}
-
 	caCert := g.certs.CaCert()
 	clientKey := g.certs.ClientKey()
 	clientCrt := g.certs.ClientCrt()
-	cPool := x509.NewCertPool()
+	
+	cPool, err := x509.SystemCertPool()
+	if err != nil {
+		return nil, errors.New("grpc/certificates: failed to load system ca pool")
+	}
 	if !cPool.AppendCertsFromPEM(caCert) {
 		return nil, errors.New("grpc/certificates: failed to parse CA crt")
 	}
@@ -176,57 +209,13 @@ func (g *GrpcCerts) newClientCredentialsWithHostAndPort(target *TypeHostAndPort)
 	if err != nil {
 		return nil, errors.New("grpc/certificates: invalid client crt")
 	}
+
 	clientTLSConfig := &tls.Config{
-		RootCAs:      cPool,
-		Certificates: []tls.Certificate{clientCert},
-		ServerName:   serverName,
-		VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-			// Custom verification for self-signed certificates in development
-			if len(rawCerts) == 0 {
-				return errors.New("no certificate presented")
-			}
-			
-			serverCert, err := x509.ParseCertificate(rawCerts[0])
-			if err != nil {
-				return err
-			}
-			
-			// Verify the server certificate was issued by our CA
-			caCerts := cPool.Subjects()
-			if len(caCerts) == 0 {
-				return errors.New("no CA certificates in pool")
-			}
-			
-			// Parse CA certificate
-			caCertPEM := g.certs.CaCert()
-			caCertBlock, _ := pem.Decode(caCertPEM)
-			if caCertBlock == nil {
-				return errors.New("failed to decode CA certificate PEM")
-			}
-			caCert, err := x509.ParseCertificate(caCertBlock.Bytes)
-			if err != nil {
-				return errors.New("failed to parse CA certificate")
-			}
-			
-			// Verify server certificate issuer matches CA subject
-			if !bytes.Equal(serverCert.RawIssuer, caCert.RawSubject) {
-				return errors.New("certificate not issued by expected CA")
-			}
-			
-			// Additional verification: check that server cert is valid for the ServerName
-			if err := serverCert.VerifyHostname(serverName); err != nil {
-				// Try localhost as fallback if ServerName was 127.0.0.1
-				if serverName == "127.0.0.1" {
-					if err := serverCert.VerifyHostname("localhost"); err != nil {
-						return fmt.Errorf("hostname verification failed for both %s and localhost: %w", serverName, err)
-					}
-				} else {
-					return fmt.Errorf("hostname verification failed for %s: %w", serverName, err)
-				}
-			}
-			
-			return nil
-		},
+		RootCAs:            cPool,
+		Certificates:       []tls.Certificate{clientCert},
+		NextProtos:         []string{"h2"}, // Required for gRPC v1.67+ ALPN enforcement
+		MinVersion:         tls.VersionTLS12, // Ensure TLS 1.2+ for HTTP/2 compatibility
+		InsecureSkipVerify: false, // Explicitly enable verification
 	}
 	creds := grpccredentials.NewTLS(clientTLSConfig)
 	return creds, nil
