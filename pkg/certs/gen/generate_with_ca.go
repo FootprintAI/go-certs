@@ -47,13 +47,26 @@ func GenerateWithExistingCA(caCertPEM, caKeyPEM []byte, notBefore, notAfter time
 	}
 
 	var caKey *rsa.PrivateKey
-	if caKeyBlock.Type == "RSA PRIVATE KEY" {
+	switch caKeyBlock.Type {
+	case "RSA PRIVATE KEY":
+		// PKCS#1 format
 		caKey, err = x509.ParsePKCS1PrivateKey(caKeyBlock.Bytes)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse CA key: %w", err)
+			return nil, fmt.Errorf("failed to parse CA key (PKCS#1): %w", err)
 		}
-	} else {
-		return nil, errors.New("unsupported CA key type")
+	case "PRIVATE KEY":
+		// PKCS#8 format (used by newer OpenSSL versions)
+		key, err := x509.ParsePKCS8PrivateKey(caKeyBlock.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse CA key (PKCS#8): %w", err)
+		}
+		var ok bool
+		caKey, ok = key.(*rsa.PrivateKey)
+		if !ok {
+			return nil, errors.New("CA key is not an RSA key")
+		}
+	default:
+		return nil, fmt.Errorf("unsupported CA key type: %s", caKeyBlock.Type)
 	}
 
 	// Verify that the CA certificate is actually a CA
@@ -78,6 +91,8 @@ func GenerateWithExistingCA(caCertPEM, caKeyPEM []byte, notBefore, notAfter time
 	}
 	servCertTmpl.KeyUsage = x509.KeyUsageDigitalSignature
 	servCertTmpl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+	// Set AuthorityKeyId to link this certificate to the CA - required for OpenSSL verification
+	servCertTmpl.AuthorityKeyId = caCert.SubjectKeyId
 
 	// Create a certificate which wraps the server's public key, sign it with the CA private key
 	_, servCertPEM, err := CreateCert(servCertTmpl, caCert, &servKey.PublicKey, caKey)
@@ -107,6 +122,8 @@ func GenerateWithExistingCA(caCertPEM, caKeyPEM []byte, notBefore, notAfter time
 	}
 	clientCertTmpl.KeyUsage = x509.KeyUsageDigitalSignature
 	clientCertTmpl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}
+	// Set AuthorityKeyId to link this certificate to the CA - required for OpenSSL verification
+	clientCertTmpl.AuthorityKeyId = caCert.SubjectKeyId
 
 	// The CA cert signs the cert by providing its private key
 	_, clientCertPEM, err := CreateCert(clientCertTmpl, caCert, &clientKey.PublicKey, caKey)
