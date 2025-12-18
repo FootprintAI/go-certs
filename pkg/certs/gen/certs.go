@@ -156,6 +156,18 @@ func NewTLSCredentials(notBefore, notAfter time.Time, opts ...templateOption) (*
 		return nil, fmt.Errorf("creating cert template: %w", err)
 	}
 
+	// Modify the CA Subject to distinguish it from leaf certificates
+	// This is required for proper OpenSSL certificate chain verification
+	if len(rootCertTmpl.Subject.Organization) > 0 {
+		caOrgs := make([]string, len(rootCertTmpl.Subject.Organization))
+		for i, org := range rootCertTmpl.Subject.Organization {
+			caOrgs[i] = org + " CA"
+		}
+		rootCertTmpl.Subject.Organization = caOrgs
+	} else {
+		rootCertTmpl.Subject.Organization = []string{"Root CA"}
+	}
+
 	// this cert will be the CA that we will use to sign the server cert
 	rootCertTmpl.IsCA = true
 	// describe what the certificate will be used for
@@ -189,6 +201,8 @@ func NewTLSCredentials(notBefore, notAfter time.Time, opts ...templateOption) (*
 	}
 	servCertTmpl.KeyUsage = x509.KeyUsageDigitalSignature
 	servCertTmpl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+	// Set AuthorityKeyId to link this certificate to the CA - required for OpenSSL verification
+	servCertTmpl.AuthorityKeyId = rootCert.SubjectKeyId
 
 	// create a certificate which wraps the server's public key, sign it with the root private key
 	_, servCertPEM, err := CreateCert(servCertTmpl, rootCert, &servKey.PublicKey, rootKey)
@@ -218,6 +232,8 @@ func NewTLSCredentials(notBefore, notAfter time.Time, opts ...templateOption) (*
 	}
 	clientCertTmpl.KeyUsage = x509.KeyUsageDigitalSignature
 	clientCertTmpl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}
+	// Set AuthorityKeyId to link this certificate to the CA - required for OpenSSL verification
+	clientCertTmpl.AuthorityKeyId = rootCert.SubjectKeyId
 
 	// the root cert signs the cert by again providing its private key
 	_, clientCertPEM, err := CreateCert(clientCertTmpl, rootCert, &clientKey.PublicKey, rootKey)
