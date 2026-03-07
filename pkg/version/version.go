@@ -26,10 +26,15 @@ var (
 	version, _ = goversion.NewVersion("0.0.4")
 )
 
-func GreatThan(v1, v2 string) bool {
-	v1v, _ := goversion.NewVersion(v1)
-	v2v, _ := goversion.NewVersion(v2)
-
+func GreaterThan(v1, v2 string) bool {
+	v1v, err := goversion.NewVersion(v1)
+	if err != nil {
+		return false
+	}
+	v2v, err := goversion.NewVersion(v2)
+	if err != nil {
+		return false
+	}
 	return v1v.GreaterThan(v2v)
 }
 
@@ -61,10 +66,9 @@ func GetCommitHash() string {
 }
 
 func Print() {
-	fmt.Printf(`version:%s, build time:%s, hashid:%s\n`,
+	fmt.Printf("version:%s, build time:%s, hashid:%s\n",
 		GetVersion(),
 		GetBuildTime(),
 		GetCommitHash(),
 	)
-
 }

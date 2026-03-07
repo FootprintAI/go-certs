@@ -177,33 +177,37 @@ func TestMemLoaderWithCAKey_CAKey(t *testing.T) {
 }
 
 func TestNewFileLoader_Insecure(t *testing.T) {
-	tests := []struct {
-		name     string
-		loader   MemLoader
-		expected bool
-	}{
-		{
-			name:     "secure file loader",
-			loader:   NewFileLoader("", "", "", "", "", false),
-			expected: false,
-		},
-		{
-			name:     "insecure file loader with param",
-			loader:   NewFileLoader("", "", "", "", "", true),
-			expected: true,
-		},
-		{
-			name:     "insecure file loader with helper",
-			loader:   NewInsecureFileLoader(),
-			expected: true,
-		},
-	}
+	t.Run("secure file loader with empty paths", func(t *testing.T) {
+		loader, err := NewFileLoader("", "", "", "", "", false)
+		if err != nil {
+			t.Fatalf("NewFileLoader() unexpected error: %v", err)
+		}
+		if got := loader.IsTLSInsecure(); got != false {
+			t.Errorf("IsTLSInsecure() = %v, want false", got)
+		}
+	})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.loader.IsTLSInsecure(); got != tt.expected {
-				t.Errorf("IsTLSInsecure() = %v, want %v", got, tt.expected)
-			}
-		})
-	}
+	t.Run("insecure file loader with param", func(t *testing.T) {
+		loader, err := NewFileLoader("", "", "", "", "", true)
+		if err != nil {
+			t.Fatalf("NewFileLoader() unexpected error: %v", err)
+		}
+		if got := loader.IsTLSInsecure(); got != true {
+			t.Errorf("IsTLSInsecure() = %v, want true", got)
+		}
+	})
+
+	t.Run("insecure file loader with helper", func(t *testing.T) {
+		loader := NewInsecureFileLoader()
+		if got := loader.IsTLSInsecure(); got != true {
+			t.Errorf("IsTLSInsecure() = %v, want true", got)
+		}
+	})
+
+	t.Run("file loader with non-existent files returns error", func(t *testing.T) {
+		_, err := NewFileLoader("/non/existent/ca.crt", "", "", "", "", false)
+		if err == nil {
+			t.Error("NewFileLoader() expected error for non-existent file, got nil")
+		}
+	})
 }

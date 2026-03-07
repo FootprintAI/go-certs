@@ -147,16 +147,3 @@ func GenerateWithExistingCA(caCertPEM, caKeyPEM []byte, notBefore, notAfter time
 	}, nil
 }
 
-// For backward compatibility with existing code
-func LegacyGenerateWithExistingCA(caCertPEM, caKeyPEM []byte, notBefore, notAfter time.Time, opts ...templateOption) ([]byte, []byte, []byte, []byte, error) {
-	credentials, err := GenerateWithExistingCA(caCertPEM, caKeyPEM, notBefore, notAfter, opts...)
-	if err != nil {
-		return nil, nil, nil, nil, err
-	}
-
-	return credentials.ClientCert.Bytes(),
-		credentials.ClientKey.Bytes(),
-		credentials.ServerCert.Bytes(),
-		credentials.ServerKey.Bytes(),
-		nil
-}

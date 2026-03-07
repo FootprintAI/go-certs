@@ -59,27 +59,6 @@ func TestMemLoaderWithTLS(t *testing.T) {
 	testGrpc(t, grpcCerts)
 }
 
-// Add a new test for backward compatibility
-func TestLegacyWithTLS(t *testing.T) {
-	ca, clientCrt, clientKey, serverCrt, serverKey := certsgen.LegacyNewTLSCredentials(
-		time.Now(),
-		time.Now().AddDate(0, 0, 1), /*one day after*/
-		certsgen.WithOrganizations("unittest"),
-		certsgen.WithAliasDNSNames("localhost"),
-		certsgen.WithAliasIPs("127.0.0.1"),
-	)
-
-	l := certsmem.NewMemLoader(
-		ca,
-		clientKey,
-		clientCrt,
-		serverKey,
-		serverCrt,
-	)
-
-	grpcCerts := NewGrpcCerts(l)
-	testGrpc(t, grpcCerts)
-}
 
 func TestManifestLoaderWithTLS(t *testing.T) {
 	grpcCerts := NewGrpcCerts(certsembed.NewEmbedLoader(certsmanifests.Manifests))

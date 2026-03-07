@@ -95,7 +95,7 @@ func TestFlagLoader_CertMethodsWithInsecure(t *testing.T) {
 			// Save original values
 			originalTLSInsecure := TLSInsecure
 			originalCaCertPath := CaCertPath
-			originalServerKeyPath := SeverKeyPath
+			originalServerKeyPath := ServerKeyPath
 			originalServerCrtPath := ServerCrtPath
 			originalClientKeyPath := ClientKeyPath
 			originalClientCrtPath := ClientCrtPath
@@ -103,7 +103,7 @@ func TestFlagLoader_CertMethodsWithInsecure(t *testing.T) {
 			defer func() {
 				TLSInsecure = originalTLSInsecure
 				CaCertPath = originalCaCertPath
-				SeverKeyPath = originalServerKeyPath
+				ServerKeyPath = originalServerKeyPath
 				ServerCrtPath = originalServerCrtPath
 				ClientKeyPath = originalClientKeyPath
 				ClientCrtPath = originalClientCrtPath
@@ -112,7 +112,7 @@ func TestFlagLoader_CertMethodsWithInsecure(t *testing.T) {
 			// Set test values
 			TLSInsecure = tt.insecure
 			CaCertPath = filepath.Join(tmpDir, "ca.crt")
-			SeverKeyPath = filepath.Join(tmpDir, "server.key")
+			ServerKeyPath = filepath.Join(tmpDir, "server.key")
 			ServerCrtPath = filepath.Join(tmpDir, "server.crt")
 			ClientKeyPath = filepath.Join(tmpDir, "client.key")
 			ClientCrtPath = filepath.Join(tmpDir, "client.crt")
@@ -162,7 +162,7 @@ func TestFlagLoader_InsecureModeWithMissingFiles(t *testing.T) {
 	// Save original values
 	originalTLSInsecure := TLSInsecure
 	originalCaCertPath := CaCertPath
-	originalServerKeyPath := SeverKeyPath
+	originalServerKeyPath := ServerKeyPath
 	originalServerCrtPath := ServerCrtPath
 	originalClientKeyPath := ClientKeyPath
 	originalClientCrtPath := ClientCrtPath
@@ -170,7 +170,7 @@ func TestFlagLoader_InsecureModeWithMissingFiles(t *testing.T) {
 	defer func() {
 		TLSInsecure = originalTLSInsecure
 		CaCertPath = originalCaCertPath
-		SeverKeyPath = originalServerKeyPath
+		ServerKeyPath = originalServerKeyPath
 		ServerCrtPath = originalServerCrtPath
 		ClientKeyPath = originalClientKeyPath
 		ClientCrtPath = originalClientCrtPath
@@ -179,7 +179,7 @@ func TestFlagLoader_InsecureModeWithMissingFiles(t *testing.T) {
 	// Set insecure mode with non-existent files
 	TLSInsecure = true
 	CaCertPath = "/non/existent/ca.crt"
-	SeverKeyPath = "/non/existent/server.key"
+	ServerKeyPath = "/non/existent/server.key"
 	ServerCrtPath = "/non/existent/server.crt"
 	ClientKeyPath = "/non/existent/client.key"
 	ClientCrtPath = "/non/existent/client.crt"

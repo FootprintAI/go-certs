@@ -211,6 +211,7 @@ func (g *GrpcCerts) newClientCredentialsWithHostAndPort(target *TypeHostAndPort)
 	}
 
 	clientTLSConfig := &tls.Config{
+		ServerName:         target.Host(),
 		RootCAs:            cPool,
 		Certificates:       []tls.Certificate{clientCert},
 		NextProtos:         []string{"h2"}, // Required for gRPC v1.67+ ALPN enforcement
