@@ -23,7 +23,7 @@ import (
 
 var (
 	CaCertPath    string
-	SeverKeyPath  string
+	ServerKeyPath string
 	ServerCrtPath string
 	ClientKeyPath string
 	ClientCrtPath string
@@ -51,7 +51,7 @@ func (f FlagLoader) ServerKey() []byte {
 	if TLSInsecure {
 		return []byte("")
 	}
-	return mustLoad(SeverKeyPath)
+	return mustLoad(ServerKeyPath)
 }
 
 func (f FlagLoader) ServerCrt() []byte {
@@ -80,10 +80,9 @@ func (f FlagLoader) IsTLSInsecure() bool {
 }
 
 func mustLoad(filepath string) []byte {
-	fmt.Printf("credentials: loading file: %s\n", filepath)
 	b, err := os.ReadFile(filepath)
 	if err != nil {
-		panic(fmt.Sprintf("credentials: missing file :%s\n", filepath))
+		panic(fmt.Sprintf("credentials: failed to load file %s: %v", filepath, err))
 	}
 	return b
 }

@@ -87,7 +87,14 @@ func (o aliasIPsOption) apply(t *Option) {
 func WithAliasIPs(aliasIPs ...string) aliasIPsOption {
 	var parsed []net.IP
 	for _, aliasIP := range aliasIPs {
-		parsed = append(parsed, net.ParseIP(aliasIP))
+		if aliasIP == "" {
+			continue
+		}
+		ip := net.ParseIP(aliasIP)
+		if ip == nil {
+			continue
+		}
+		parsed = append(parsed, ip)
 	}
 	return aliasIPsOption{aliasIPs: parsed}
 }
@@ -151,28 +158,39 @@ func NewTLSCredentials(notBefore, notAfter time.Time, opts ...templateOption) (*
 		return nil, fmt.Errorf("generating random key: %w", err)
 	}
 
-	rootCertTmpl, err := CertTemplate(notBefore, notAfter, opts...)
+	// Build CA template without SANs/ExtKeyUsage (those are leaf cert properties)
+	o := &Option{}
+	for _, opt := range opts {
+		opt.apply(o)
+	}
+
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
-		return nil, fmt.Errorf("creating cert template: %w", err)
+		return nil, fmt.Errorf("generating serial number: %w", err)
 	}
 
-	// Modify the CA Subject to distinguish it from leaf certificates
-	// This is required for proper OpenSSL certificate chain verification
-	if len(rootCertTmpl.Subject.Organization) > 0 {
-		caOrgs := make([]string, len(rootCertTmpl.Subject.Organization))
-		for i, org := range rootCertTmpl.Subject.Organization {
-			caOrgs[i] = org + " CA"
+	caOrgs := o.organizations
+	if len(caOrgs) > 0 {
+		orgs := make([]string, len(caOrgs))
+		for i, org := range caOrgs {
+			orgs[i] = org + " CA"
 		}
-		rootCertTmpl.Subject.Organization = caOrgs
+		caOrgs = orgs
 	} else {
-		rootCertTmpl.Subject.Organization = []string{"Root CA"}
+		caOrgs = []string{"Root CA"}
 	}
 
-	// this cert will be the CA that we will use to sign the server cert
-	rootCertTmpl.IsCA = true
-	// describe what the certificate will be used for
-	rootCertTmpl.KeyUsage = x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature
-	rootCertTmpl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
+	rootCertTmpl := &x509.Certificate{
+		SerialNumber:          serialNumber,
+		Subject:               pkix.Name{Organization: caOrgs},
+		SignatureAlgorithm:    x509.SHA256WithRSA,
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+	}
 
 	rootCert, rootCertPEM, err := CreateCert(rootCertTmpl, rootCertTmpl, &rootKey.PublicKey, rootKey)
 	if err != nil {
@@ -257,16 +275,3 @@ func NewTLSCredentials(notBefore, notAfter time.Time, opts ...templateOption) (*
 	}, nil
 }
 
-// For backward compatibility with existing code
-func LegacyNewTLSCredentials(notBefore, notAfter time.Time, opts ...templateOption) ([]byte, []byte, []byte, []byte, []byte) {
-	credentials, err := NewTLSCredentials(notBefore, notAfter, opts...)
-	if err != nil {
-		panic(fmt.Sprintf("error creating certificates: %v", err))
-	}
-
-	return credentials.CACert.Bytes(),
-		credentials.ClientCert.Bytes(),
-		credentials.ClientKey.Bytes(),
-		credentials.ServerCert.Bytes(),
-		credentials.ServerKey.Bytes()
-}

@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/footprintai/go-certs/pkg/certs/inspect"
 	"github.com/spf13/cobra"
 )
 
@@ -112,20 +113,20 @@ var inspectCmd = &cobra.Command{
 			// Time until expiry
 			timeUntilExpiry := cert.NotAfter.Sub(time.Now())
 			if timeUntilExpiry > 0 {
-				fmt.Printf("Expires in: %s\n", formatDuration(timeUntilExpiry))
+				fmt.Printf("Expires in: %s\n", inspect.FormatDuration(timeUntilExpiry))
 			} else {
-				fmt.Printf("Expired: %s ago\n", formatDuration(-timeUntilExpiry))
+				fmt.Printf("Expired: %s ago\n", inspect.FormatDuration(-timeUntilExpiry))
 			}
 
 			// Is it a CA?
 			fmt.Printf("Is CA: %t\n", cert.IsCA)
 
 			// Key Usage
-			fmt.Printf("Key Usage: %v\n", formatKeyUsage(cert.KeyUsage))
+			fmt.Printf("Key Usage: %v\n", inspect.FormatKeyUsage(cert.KeyUsage))
 
 			// Extended Key Usage
 			if len(cert.ExtKeyUsage) > 0 {
-				fmt.Printf("Extended Key Usage: %v\n", formatExtKeyUsage(cert.ExtKeyUsage))
+				fmt.Printf("Extended Key Usage: %v\n", inspect.FormatExtKeyUsage(cert.ExtKeyUsage))
 			}
 
 			// Subject Alternative Names (SANs)
@@ -182,9 +183,9 @@ var inspectCmd = &cobra.Command{
 								// If cert and CA match, calculate and show remaining time in CA's validity period
 								caTimeUntilExpiry := caCert.NotAfter.Sub(time.Now())
 								if caTimeUntilExpiry > 0 {
-									fmt.Printf("CA Certificate expires in: %s\n", formatDuration(caTimeUntilExpiry))
+									fmt.Printf("CA Certificate expires in: %s\n", inspect.FormatDuration(caTimeUntilExpiry))
 								} else {
-									fmt.Printf("\033[31mWARNING: CA Certificate is EXPIRED: %s ago\033[0m\n", formatDuration(-caTimeUntilExpiry))
+									fmt.Printf("\033[31mWARNING: CA Certificate is EXPIRED: %s ago\033[0m\n", inspect.FormatDuration(-caTimeUntilExpiry))
 								}
 							}
 						}
@@ -193,98 +194,6 @@ var inspectCmd = &cobra.Command{
 			}
 		}
 	},
-}
-
-// Helper function to format duration in a human-readable way
-func formatDuration(d time.Duration) string {
-	d = d.Round(time.Second)
-	days := d / (24 * time.Hour)
-	d -= days * 24 * time.Hour
-	hours := d / time.Hour
-	d -= hours * time.Hour
-	minutes := d / time.Minute
-	d -= minutes * time.Minute
-	seconds := d / time.Second
-
-	if days > 0 {
-		return fmt.Sprintf("%dd %dh %dm %ds", days, hours, minutes, seconds)
-	}
-	if hours > 0 {
-		return fmt.Sprintf("%dh %dm %ds", hours, minutes, seconds)
-	}
-	if minutes > 0 {
-		return fmt.Sprintf("%dm %ds", minutes, seconds)
-	}
-	return fmt.Sprintf("%ds", seconds)
-}
-
-// Helper function to format key usage
-func formatKeyUsage(ku x509.KeyUsage) []string {
-	var usages []string
-
-	if ku&x509.KeyUsageDigitalSignature != 0 {
-		usages = append(usages, "DigitalSignature")
-	}
-	if ku&x509.KeyUsageContentCommitment != 0 {
-		usages = append(usages, "ContentCommitment")
-	}
-	if ku&x509.KeyUsageKeyEncipherment != 0 {
-		usages = append(usages, "KeyEncipherment")
-	}
-	if ku&x509.KeyUsageDataEncipherment != 0 {
-		usages = append(usages, "DataEncipherment")
-	}
-	if ku&x509.KeyUsageKeyAgreement != 0 {
-		usages = append(usages, "KeyAgreement")
-	}
-	if ku&x509.KeyUsageCertSign != 0 {
-		usages = append(usages, "CertSign")
-	}
-	if ku&x509.KeyUsageCRLSign != 0 {
-		usages = append(usages, "CRLSign")
-	}
-	if ku&x509.KeyUsageEncipherOnly != 0 {
-		usages = append(usages, "EncipherOnly")
-	}
-	if ku&x509.KeyUsageDecipherOnly != 0 {
-		usages = append(usages, "DecipherOnly")
-	}
-
-	return usages
-}
-
-// Helper function to format extended key usage
-func formatExtKeyUsage(eku []x509.ExtKeyUsage) []string {
-	var usages []string
-
-	for _, u := range eku {
-		switch u {
-		case x509.ExtKeyUsageAny:
-			usages = append(usages, "Any")
-		case x509.ExtKeyUsageServerAuth:
-			usages = append(usages, "ServerAuth")
-		case x509.ExtKeyUsageClientAuth:
-			usages = append(usages, "ClientAuth")
-		case x509.ExtKeyUsageCodeSigning:
-			usages = append(usages, "CodeSigning")
-		case x509.ExtKeyUsageEmailProtection:
-			usages = append(usages, "EmailProtection")
-		case x509.ExtKeyUsageIPSECEndSystem:
-			usages = append(usages, "IPSECEndSystem")
-		case x509.ExtKeyUsageIPSECTunnel:
-			usages = append(usages, "IPSECTunnel")
-		case x509.ExtKeyUsageIPSECUser:
-			usages = append(usages, "IPSECUser")
-		case x509.ExtKeyUsageTimeStamping:
-			usages = append(usages, "TimeStamping")
-		case x509.ExtKeyUsageOCSPSigning:
-			usages = append(usages, "OCSPSigning")
-		default:
-			usages = append(usages, fmt.Sprintf("Unknown(%d)", u))
-		}
-	}
-
-	return usages
 }
 
 func init() {

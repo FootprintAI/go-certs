@@ -8,7 +8,7 @@ import (
 )
 
 func init() {
-	flag.StringVar(&certsflags.SeverKeyPath, "tls_server_key", "", "credentials: server key file path")
+	flag.StringVar(&certsflags.ServerKeyPath, "tls_server_key", "", "credentials: server key file path")
 	flag.StringVar(&certsflags.ServerCrtPath, "tls_server_crt", "", "credentials: server crt file path")
 }
 

@@ -15,20 +15,44 @@
 package certsmem
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/footprintai/go-certs/pkg/certs"
 )
 
-func NewFileLoader(ca, clientKey, clientCert, serverKey, serverCert string, insecure bool) MemLoader {
-	return MemLoader{
-		ca:         certs.CACert(readAllIfNotEmpty(ca)),
-		clientKey:  certs.ClientKey(readAllIfNotEmpty(clientKey)),
-		clientCert: certs.ClientCert(readAllIfNotEmpty(clientCert)),
-		serverKey:  certs.ServerKey(readAllIfNotEmpty(serverKey)),
-		serverCert: certs.ServerCert(readAllIfNotEmpty(serverCert)),
-		insecure:   insecure,
+func NewFileLoader(ca, clientKey, clientCert, serverKey, serverCert string, insecure bool) (MemLoader, error) {
+	if insecure {
+		return MemLoader{insecure: true}, nil
 	}
+	caBytes, err := readAllIfNotEmpty(ca)
+	if err != nil {
+		return MemLoader{}, fmt.Errorf("loading CA cert: %w", err)
+	}
+	clientKeyBytes, err := readAllIfNotEmpty(clientKey)
+	if err != nil {
+		return MemLoader{}, fmt.Errorf("loading client key: %w", err)
+	}
+	clientCertBytes, err := readAllIfNotEmpty(clientCert)
+	if err != nil {
+		return MemLoader{}, fmt.Errorf("loading client cert: %w", err)
+	}
+	serverKeyBytes, err := readAllIfNotEmpty(serverKey)
+	if err != nil {
+		return MemLoader{}, fmt.Errorf("loading server key: %w", err)
+	}
+	serverCertBytes, err := readAllIfNotEmpty(serverCert)
+	if err != nil {
+		return MemLoader{}, fmt.Errorf("loading server cert: %w", err)
+	}
+	return MemLoader{
+		ca:         certs.CACert(caBytes),
+		clientKey:  certs.ClientKey(clientKeyBytes),
+		clientCert: certs.ClientCert(clientCertBytes),
+		serverKey:  certs.ServerKey(serverKeyBytes),
+		serverCert: certs.ServerCert(serverCertBytes),
+		insecure:   insecure,
+	}, nil
 }
 
 // NewInsecureFileLoader creates a memory-based certificate loader in insecure mode that ignores file paths
@@ -38,15 +62,15 @@ func NewInsecureFileLoader() MemLoader {
 	}
 }
 
-func readAllIfNotEmpty(file string) []byte {
+func readAllIfNotEmpty(file string) ([]byte, error) {
 	if file == "" {
-		return []byte{}
+		return []byte{}, nil
 	}
 	blob, err := os.ReadFile(file)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("credentials: failed to read file %s: %w", file, err)
 	}
-	return blob
+	return blob, nil
 }
 
 // NewMemLoader creates a memory-based certificate loader with the provided certificates and keys

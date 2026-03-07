@@ -1,8 +1,7 @@
 BUILDDIR ?= "./bin"
-BUILDTIME=$(shell date --rfc-3339=seconds)
-GITCOMMITID=$(shell git rev-parse HEAD)
+BUILDTIME=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 MAINFILE=cmd/main.go
-LDFLAGS=-X "github.com/footprintai/go-certs/pkg/version.BuildTime=${BUILDTIME}" -X "github.com/footprintai/go-certs/pkg/version.GitCommitId=${GITCOMMITID}"
+LDFLAGS=-X "github.com/footprintai/go-certs/pkg/version.BuildTime=${BUILDTIME}"
 
 tidy: ## Tidy go modules
 	./gomodtidy.sh
