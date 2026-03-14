@@ -117,6 +117,33 @@ func (g *GrpcCerts) NewServerTLSCredentials() (grpccredentials.TransportCredenti
 	return g.newServerCredentials()
 }
 
+// NewServerTLSCredentialsOptionalClientCert creates server TLS credentials that accept
+// connections with or without client certificates. If a client cert is presented, it is
+// verified against the CA; if not, the connection is still allowed.
+// This enables token-only bootstrap connections (no client cert) alongside full mTLS
+// reconnections (with per-device client cert).
+func (g *GrpcCerts) NewServerTLSCredentialsOptionalClientCert() (grpccredentials.TransportCredentials, error) {
+	if g.certs.IsTLSInsecure() {
+		return insecure.NewCredentials(), nil
+	}
+	serverCert, err := tls.X509KeyPair(g.certs.ServerCrt(), g.certs.ServerKey())
+	if err != nil {
+		return nil, errors.New("grpc/certificates: invalid server crt")
+	}
+	cPool := x509.NewCertPool()
+	if !cPool.AppendCertsFromPEM(g.certs.CaCert()) {
+		return nil, errors.New("grpc/certificates: failed to parse client CA")
+	}
+	tlsConfig := &tls.Config{
+		ClientAuth:   tls.VerifyClientCertIfGiven,
+		ClientCAs:    cPool,
+		Certificates: []tls.Certificate{serverCert},
+		NextProtos:   []string{"h2"},
+		MinVersion:   tls.VersionTLS12,
+	}
+	return grpccredentials.NewTLS(tlsConfig), nil
+}
+
 func (g *GrpcCerts) newServerCredentials() (grpccredentials.TransportCredentials, error) {
 	// Check if insecure mode is enabled
 	if g.certs.IsTLSInsecure() {
@@ -186,6 +213,30 @@ func (g *GrpcCerts) NewClientDialOptions(target *TypeHostAndPort) ([]grpc.DialOp
 	return dialOpts, nil
 }
 
+
+// NewClientTLSCredentialsServerAuthOnly creates client TLS credentials that only verify
+// the server's certificate (server-auth TLS). No client certificate is sent.
+// Use this for bootstrap connections where the device has no per-device cert yet
+// and authenticates via a static token instead.
+func (g *GrpcCerts) NewClientTLSCredentialsServerAuthOnly(target *TypeHostAndPort) (grpccredentials.TransportCredentials, error) {
+	if g.certs.IsTLSInsecure() {
+		return insecure.NewCredentials(), nil
+	}
+	cPool, err := x509.SystemCertPool()
+	if err != nil {
+		return nil, errors.New("grpc/certificates: failed to load system ca pool")
+	}
+	if !cPool.AppendCertsFromPEM(g.certs.CaCert()) {
+		return nil, errors.New("grpc/certificates: failed to parse CA crt")
+	}
+	tlsConfig := &tls.Config{
+		ServerName: target.Host(),
+		RootCAs:    cPool,
+		NextProtos: []string{"h2"},
+		MinVersion: tls.VersionTLS12,
+	}
+	return grpccredentials.NewTLS(tlsConfig), nil
+}
 
 func (g *GrpcCerts) newClientCredentialsWithHostAndPort(target *TypeHostAndPort) (grpccredentials.TransportCredentials, error) {
 	// Check if insecure mode is enabled
