@@ -187,6 +187,115 @@ func (g *GrpcCerts) NewClientDialOptions(target *TypeHostAndPort) ([]grpc.DialOp
 }
 
 
+// === Dynamic TLS methods ===
+// These use GetCertificate/GetClientCertificate callbacks that read from the
+// certs.Certificates interface on every TLS handshake, enabling cert renewal
+// without restarting servers. Use these for long-running servers with cert rotation.
+
+// NewDynamicServerTLSCredentials creates server TLS credentials that read certs
+// dynamically from the Certificates interface on each TLS handshake.
+// This enables cert renewal without restarting the server.
+// ClientAuth is set to RequireAndVerifyClientCert (full mTLS).
+func (g *GrpcCerts) NewDynamicServerTLSCredentials() (grpccredentials.TransportCredentials, error) {
+	if g.certs.IsTLSInsecure() {
+		return insecure.NewCredentials(), nil
+	}
+	caPool := x509.NewCertPool()
+	if !caPool.AppendCertsFromPEM(g.certs.CaCert()) {
+		return nil, errors.New("grpc/certificates: failed to parse CA cert")
+	}
+	loader := g.certs
+	tlsConfig := &tls.Config{
+		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+			cert, err := tls.X509KeyPair(loader.ServerCrt(), loader.ServerKey())
+			if err != nil {
+				return nil, err
+			}
+			return &cert, nil
+		},
+		ClientAuth: tls.RequireAndVerifyClientCert,
+		ClientCAs:  caPool,
+		NextProtos: []string{"h2"},
+		MinVersion: tls.VersionTLS12,
+	}
+	return grpccredentials.NewTLS(tlsConfig), nil
+}
+
+// NewDynamicServerTLSCredentialsOptionalClientCert creates server TLS credentials
+// that read certs dynamically and accept connections with or without client certs.
+// Use this for servers that accept both bootstrap (no client cert) and mTLS connections.
+func (g *GrpcCerts) NewDynamicServerTLSCredentialsOptionalClientCert() (grpccredentials.TransportCredentials, error) {
+	if g.certs.IsTLSInsecure() {
+		return insecure.NewCredentials(), nil
+	}
+	caPool := x509.NewCertPool()
+	if !caPool.AppendCertsFromPEM(g.certs.CaCert()) {
+		return nil, errors.New("grpc/certificates: failed to parse CA cert")
+	}
+	loader := g.certs
+	tlsConfig := &tls.Config{
+		GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+			cert, err := tls.X509KeyPair(loader.ServerCrt(), loader.ServerKey())
+			if err != nil {
+				return nil, err
+			}
+			return &cert, nil
+		},
+		ClientAuth: tls.VerifyClientCertIfGiven,
+		ClientCAs:  caPool,
+		NextProtos: []string{"h2"},
+		MinVersion: tls.VersionTLS12,
+	}
+	return grpccredentials.NewTLS(tlsConfig), nil
+}
+
+// NewDynamicClientTLSCredentials creates client TLS credentials that read certs
+// dynamically from the Certificates interface on each TLS handshake.
+// This enables cert renewal without reconnecting.
+func (g *GrpcCerts) NewDynamicClientTLSCredentials(target *TypeHostAndPort) (grpccredentials.TransportCredentials, error) {
+	if g.certs.IsTLSInsecure() {
+		return insecure.NewCredentials(), nil
+	}
+	cPool, err := x509.SystemCertPool()
+	if err != nil {
+		return nil, errors.New("grpc/certificates: failed to load system ca pool")
+	}
+	if !cPool.AppendCertsFromPEM(g.certs.CaCert()) {
+		return nil, errors.New("grpc/certificates: failed to parse CA crt")
+	}
+	loader := g.certs
+	tlsConfig := &tls.Config{
+		ServerName: target.Host(),
+		RootCAs:    cPool,
+		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+			cert, err := tls.X509KeyPair(loader.ClientCrt(), loader.ClientKey())
+			if err != nil {
+				return nil, err
+			}
+			return &cert, nil
+		},
+		NextProtos: []string{"h2"},
+		MinVersion: tls.VersionTLS12,
+	}
+	return grpccredentials.NewTLS(tlsConfig), nil
+}
+
+// NewDynamicClientDialOptions creates dynamic TLS client dial options for cert renewal.
+// Like NewClientDialOptions but uses GetClientCertificate callback.
+func (g *GrpcCerts) NewDynamicClientDialOptions(target *TypeHostAndPort) ([]grpc.DialOption, error) {
+	creds, err := g.NewDynamicClientTLSCredentials(target)
+	if err != nil {
+		return nil, err
+	}
+	dialOpts := []grpc.DialOption{
+		grpc.WithTransportCredentials(creds),
+	}
+	if host := target.Host(); host != "" {
+		dialOpts = append(dialOpts, grpc.WithAuthority(host))
+	}
+	return dialOpts, nil
+}
+
 func (g *GrpcCerts) newClientCredentialsWithHostAndPort(target *TypeHostAndPort) (grpccredentials.TransportCredentials, error) {
 	// Check if insecure mode is enabled
 	if g.certs.IsTLSInsecure() {
